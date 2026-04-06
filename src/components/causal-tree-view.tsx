@@ -267,6 +267,11 @@ export default function CausalTreeView({
   const [pan, setPan] = useState({ x: 20, y: 20 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  // 用户拖拽后的节点位置覆盖
+  const [nodePositions, setNodePositions] = useState<Map<string, { x: number; y: number }>>(new Map());
+  const nodePosOverride = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const dragNodeId = useRef<string | null>(null);
+  const dragOffset = useRef({ x: 0, y: 0 });
 
   const nodes = useMemo(() => layoutTree(graph.nodes, graph.edges || []), [graph.nodes, graph.edges]);
   const nodePosMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
@@ -314,7 +319,13 @@ export default function CausalTreeView({
     ctx.save();
     ctx.translate(pan.x, pan.y);
     ctx.scale(zoom, zoom);
-    drawTree(ctx, size.w / zoom, size.h / zoom, nodes, graph.edges || [], selectedId, hoveredId, onNodeClick!, nodePosMap);
+    // 合并布局位置和用户拖拽位置
+    const layoutNodesAdjusted = nodes.map(n => {
+      const overridden = nodePosOverride.current.get(n.id);
+      return overridden ? { ...n, x: overridden.x, y: overridden.y } : n;
+    });
+    const nodePosMapAdjusted = new Map(layoutNodesAdjusted.map(n => [n.id, n]));
+    drawTree(ctx, size.w / zoom, size.h / zoom, layoutNodesAdjusted, graph.edges || [], selectedId, hoveredId, onNodeClick!, nodePosMapAdjusted);
     ctx.restore();
   }, [nodes, graph.edges, selectedId, hoveredId, zoom, pan, size, onNodeClick, nodePosMap]);
 
@@ -329,39 +340,83 @@ export default function CausalTreeView({
     return null;
   }, [nodes, pan, zoom]);
 
+  const getNodeAtAdjusted = useCallback((cx: number, cy: number): DrawNode | null => {
+    const wx = (cx - pan.x) / zoom;
+    const wy = (cy - pan.y) / zoom;
+    for (const n of nodes) {
+      const overridden = nodePosOverride.current.get(n.id);
+      const nx = overridden ? overridden.x : n.x;
+      const ny = overridden ? overridden.y : n.y;
+      if (wx >= nx && wx <= nx + NODE_W && wy >= ny && wy <= ny + NODE_H) {
+        return n;
+      }
+    }
+    return null;
+  }, [nodes, pan, zoom]);
+
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isDragging) return;
     const rect = canvasRef.current!.getBoundingClientRect();
-    const n = getNodeAt(e.clientX - rect.left, e.clientY - rect.top);
+    const n = getNodeAtAdjusted(e.clientX - rect.left, e.clientY - rect.top);
     if (n) {
       setSelectedId(prev => prev === n.id ? null : n.id);
     } else {
       setSelectedId(null);
     }
-  }, [getNodeAt]);
+  }, [isDragging, getNodeAtAdjusted]);
 
   const handleDblClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current!.getBoundingClientRect();
-    const n = getNodeAt(e.clientX - rect.left, e.clientY - rect.top);
+    const n = getNodeAtAdjusted(e.clientX - rect.left, e.clientY - rect.top);
     if (n) onNodeClick?.(n.node);
-  }, [getNodeAt, onNodeClick]);
+  }, [getNodeAtAdjusted, onNodeClick]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return;
-    dragStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
-    setIsDragging(false);
-    const onMove = (me: MouseEvent) => {
-      const dx = me.clientX - dragStart.current.x;
-      const dy = me.clientY - dragStart.current.y;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) setIsDragging(true);
-      setPan({ x: dragStart.current.panX + dx, y: dragStart.current.panY + dy });
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, [pan]);
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const n = getNodeAtAdjusted(e.clientX - rect.left, e.clientY - rect.top);
+
+    if (n) {
+      // 开始拖拽节点
+      const wx = (e.clientX - rect.left - pan.x) / zoom;
+      const wy = (e.clientY - rect.top - pan.y) / zoom;
+      const nx = (nodePosOverride.current.get(n.id)?.x) ?? n.x;
+      const ny = (nodePosOverride.current.get(n.id)?.y) ?? n.y;
+      dragNodeId.current = n.id;
+      dragOffset.current = { x: wx - nx, y: wy - ny };
+      setSelectedId(n.id);
+    } else {
+      // 开始平移画布
+      dragStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      setIsDragging(false);
+      const onMove = (me: MouseEvent) => {
+        const dx = me.clientX - dragStart.current.x;
+        const dy = me.clientY - dragStart.current.y;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) setIsDragging(true);
+        setPan({ x: dragStart.current.panX + dx, y: dragStart.current.panY + dy });
+      };
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        dragNodeId.current = null;
+        setIsDragging(false);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    }
+  }, [pan, zoom, getNodeAtAdjusted]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!dragNodeId.current) return;
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const wx = (e.clientX - rect.left - pan.x) / zoom;
+    const wy = (e.clientY - rect.top - pan.y) / zoom;
+    const nx = wx - dragOffset.current.x;
+    const ny = wy - dragOffset.current.y;
+    nodePosOverride.current.set(dragNodeId.current, { x: nx, y: ny });
+    setNodePositions(new Map(nodePosOverride.current));
+    setIsDragging(true); // prevent click
+  }, [pan, zoom]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -425,11 +480,16 @@ export default function CausalTreeView({
           onDoubleClick={handleDblClick}
           onMouseDown={handleMouseDown}
           onMouseMove={e => {
-            const rect = canvasRef.current!.getBoundingClientRect();
-            const n = getNodeAt(e.clientX - rect.left, e.clientY - rect.top);
-            setHoveredId(n?.id || null);
+            if (dragNodeId.current) {
+              // 正在拖拽节点
+              handleMouseMove(e);
+            } else {
+              const rect = canvasRef.current!.getBoundingClientRect();
+              const n = getNodeAtAdjusted(e.clientX - rect.left, e.clientY - rect.top);
+              setHoveredId(n?.id || null);
+            }
           }}
-          onMouseLeave={() => setHoveredId(null)}
+          onMouseLeave={() => { setHoveredId(null); dragNodeId.current = null; }}
           onWheel={handleWheel}
         />
       </div>
