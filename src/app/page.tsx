@@ -21,6 +21,7 @@ import HistoricalCasesView from '@/components/historical-cases-view';
 import SettingsDialog, { type ApiConfig } from '@/components/settings-dialog';
 import KnowledgePanel from '@/components/knowledge-panel';
 import StakeholderView from '@/components/stakeholder-view';
+import CausalTreeView from '@/components/causal-tree-view';
 import type { StakeholderAnalysis } from '@/lib/types';
 import type { CausalGraph, CausalEdge, PredictionResult, StreamEvent, CausalNode, SensitivityAnalysis, HistoricalCase } from '@/lib/types';
 import { 
@@ -77,6 +78,9 @@ export default function Home() {
   // 节点扩展状态
   const [isExpanding, setIsExpanding] = useState(false);
   const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
+
+  // 图谱视图模式：graph=节点图，tree=思维导图
+  const [graphViewMode, setGraphViewMode] = useState<'graph' | 'tree'>('graph');
 
   // 设置弹窗
   const [showSettings, setShowSettings] = useState(false);
@@ -578,10 +582,34 @@ export default function Home() {
                       <div className="p-4 border-b border-slate-700/50 bg-slate-800/30">
                         <div className="flex items-center justify-between">
                           <h3 className="font-semibold text-white">深度因果关系图</h3>
-                          <div className="flex items-center gap-3 text-xs text-slate-400">
-                            <span>{causalGraph.nodes.length} 节点</span>
-                            <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-                            <span>{causalGraph.edges?.length || 0} 连线</span>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center bg-slate-700/50 rounded-lg p-0.5">
+                              <button
+                                onClick={() => setGraphViewMode('graph')}
+                                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                                  graphViewMode === 'graph'
+                                    ? 'bg-cyan-500/20 text-cyan-400'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                节点图
+                              </button>
+                              <button
+                                onClick={() => setGraphViewMode('tree')}
+                                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                                  graphViewMode === 'tree'
+                                    ? 'bg-cyan-500/20 text-cyan-400'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                推理链
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-slate-400">
+                              <span>{causalGraph.nodes.length} 节点</span>
+                              <span className="w-1 h-1 rounded-full bg-slate-600"></span>
+                              <span>{causalGraph.edges?.length || 0} 连线</span>
+                            </div>
                           </div>
                         </div>
                         {causalGraph.description && (
@@ -589,7 +617,11 @@ export default function Home() {
                         )}
                       </div>
                       <CardContent className="p-0">
-                        <CausalGraphView graph={causalGraph} onNodeClick={handleNodeClick} />
+                        {graphViewMode === 'tree' ? (
+                          <CausalTreeView graph={causalGraph} onNodeClick={handleNodeClick} />
+                        ) : (
+                          <CausalGraphView graph={causalGraph} onNodeClick={handleNodeClick} />
+                        )}
                       </CardContent>
                     </Card>
                   ) : isLoading ? (
