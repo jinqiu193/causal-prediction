@@ -20,6 +20,8 @@ import SensitivityView from '@/components/sensitivity-view';
 import HistoricalCasesView from '@/components/historical-cases-view';
 import SettingsDialog, { type ApiConfig } from '@/components/settings-dialog';
 import KnowledgePanel from '@/components/knowledge-panel';
+import StakeholderView from '@/components/stakeholder-view';
+import type { StakeholderAnalysis } from '@/lib/types';
 import type { CausalGraph, CausalEdge, PredictionResult, StreamEvent, CausalNode, SensitivityAnalysis, HistoricalCase } from '@/lib/types';
 import { 
   Send,
@@ -33,7 +35,8 @@ import {
   TrendingUp,
   Activity,
   History,
-  BookOpen
+  BookOpen,
+  Users
 } from 'lucide-react';
 
 const EXAMPLE_QUESTIONS = [
@@ -62,6 +65,10 @@ export default function Home() {
   // 新增状态：敏感性分析
   const [sensitivityAnalysis, setSensitivityAnalysis] = useState<SensitivityAnalysis | null>(null);
   const [isLoadingSensitivity, setIsLoadingSensitivity] = useState(false);
+
+  // 新增状态：利益分析
+  const [stakeholderAnalysis, setStakeholderAnalysis] = useState<StakeholderAnalysis | null>(null);
+  const [isLoadingStakeholder, setIsLoadingStakeholder] = useState(false);
   
   // 新增状态：历史案例
   const [historicalCases, setHistoricalCases] = useState<HistoricalCase[]>([]);
@@ -75,7 +82,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
 
   // 当前激活的菜单项
-  const [activeTab, setActiveTab] = useState<'graph' | 'prediction' | 'sensitivity' | 'history' | 'knowledge'>('graph');
+  const [activeTab, setActiveTab] = useState<'graph' | 'prediction' | 'sensitivity' | 'stakeholder' | 'history' | 'knowledge'>('graph');
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
     try {
       const stored = localStorage.getItem('causal-predict-config');
@@ -143,6 +150,29 @@ export default function Home() {
     }
   }, []);
 
+  // 获取利益分析
+  const fetchStakeholderAnalysis = useCallback(async (graph: CausalGraph, q: string) => {
+    if (!graph || graph.nodes.length === 0) return;
+    
+    setIsLoadingStakeholder(true);
+    try {
+      const response = await fetch('/api/stakeholder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ graph, question: q, apiConfig })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStakeholderAnalysis(data);
+      }
+    } catch {
+      // 忽略错误
+    } finally {
+      setIsLoadingStakeholder(false);
+    }
+  }, [apiConfig]);
+
   const handlePredict = useCallback(async () => {
     if (!question.trim()) return;
 
@@ -153,6 +183,7 @@ export default function Home() {
     setCausalGraph(null);
     setPrediction(null);
     setSensitivityAnalysis(null);
+    setStakeholderAnalysis(null);
     setHistoricalCases([]);
 
     abortControllerRef.current = new AbortController();
@@ -201,6 +232,8 @@ export default function Home() {
                   setCausalGraph(graph);
                   // 自动获取敏感性分析
                   fetchSensitivityAnalysis(graph);
+                  // 自动获取利益分析
+                  fetchStakeholderAnalysis(graph, question);
                   // 自动获取历史案例
                   const keywords = graph.nodes.flatMap(n => n.keywords || []).slice(0, 5);
                   fetchHistoricalCases(question, keywords);
@@ -498,6 +531,18 @@ export default function Home() {
                 </button>
 
                 <button
+                  onClick={() => setActiveTab('stakeholder')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                    activeTab === 'stakeholder'
+                      ? 'bg-violet-500/20 text-violet-400'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Users className="h-4 w-4" />
+                  利益分析
+                </button>
+
+                <button
                   onClick={() => setActiveTab('history')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
                     activeTab === 'history'
@@ -594,6 +639,28 @@ export default function Home() {
                     <Card className="bg-slate-800/50 border-slate-700/50">
                       <CardContent className="p-8 text-center text-slate-500">
                         暂无敏感性分析数据
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
+
+              {/* 利益分析 */}
+              {activeTab === 'stakeholder' && (
+                <div>
+                  {isLoadingStakeholder ? (
+                    <Card className="bg-slate-800/50 border-slate-700/50">
+                      <CardContent className="p-8 flex items-center justify-center gap-3 text-slate-400">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span>正在分析利益相关者...</span>
+                      </CardContent>
+                    </Card>
+                  ) : stakeholderAnalysis ? (
+                    <StakeholderView analysis={stakeholderAnalysis} />
+                  ) : (
+                    <Card className="bg-slate-800/50 border-slate-700/50">
+                      <CardContent className="p-8 text-center text-slate-500">
+                        暂无利益分析数据
                       </CardContent>
                     </Card>
                   )}

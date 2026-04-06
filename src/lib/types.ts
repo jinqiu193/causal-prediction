@@ -92,6 +92,35 @@ export interface KnowledgeItem {
   updatedAt: string;
 }
 
+// ========== 新增：利益分析 ==========
+
+export interface Stakeholder {
+  id: string;
+  name: string;               // 主体名称，如"美国政府"、"欧盟"
+  type: 'government' | 'corporation' | 'organization' | 'individual' | 'bloc'; // 主体类型
+  description?: string;         // 描述
+  attributes: {
+    interest: string;           // 核心利益
+    stance: 'support' | 'oppose' | 'neutral' | 'conditional'; // 立场
+    capability: 'strong' | 'moderate' | 'weak'; // 行动能力
+    influence: number;          // 影响力 1-100
+    resource?: string;          // 关键资源
+  };
+  possibleActions: Array<{
+    action: string;            // 可能措施
+    probability: number;         // 实施概率 0-100
+    timeframe?: string;         // 时间窗口
+    impact: 'high' | 'medium' | 'low'; // 对结果的影响
+    description?: string;
+  }>;
+}
+
+export interface StakeholderAnalysis {
+  question: string;
+  stakeholders: Stakeholder[];
+  summary: string;              // 总体利益格局分析
+}
+
 // ========== 新增：历史案例 ==========
 
 export interface HistoricalCase {
