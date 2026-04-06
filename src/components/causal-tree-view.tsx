@@ -97,31 +97,21 @@ function drawTree(
 
   if (nodes.length === 0) return;
 
-  // 计算高亮集合（迭代版，防止栈溢出）
+  // 只高亮直接前驱（入边节点）和直接后继（出边节点）
   const highlightNodes = new Set<string>();
+  const highlightEdges = new Set<string>();
   if (selectedId) {
     highlightNodes.add(selectedId);
-    const visited = new Set<string>();
-
-    // 用栈模拟DFS，避免递归栈溢出
-    const stack = [selectedId];
-    while (stack.length > 0) {
-      const id = stack.pop()!;
-      if (visited.has(id)) continue;
-      visited.add(id);
-
-      // 前向：找所有指向此节点的边（祖先）
-      edges.filter(e => e.target === id && !visited.has(e.source)).forEach(e => {
-        highlightNodes.add(e.source);
-        stack.push(e.source);
-      });
-
-      // 后向：找所有从此节点指出的边（后代）
-      edges.filter(e => e.source === id && !visited.has(e.target)).forEach(e => {
-        highlightNodes.add(e.target);
-        stack.push(e.target);
-      });
-    }
+    // 直接前驱：所有指向此节点的边
+    edges.filter(e => e.target === selectedId).forEach(e => {
+      highlightNodes.add(e.source);
+      highlightEdges.add(e.id);
+    });
+    // 直接后继：所有从此节点指出的边
+    edges.filter(e => e.source === selectedId).forEach(e => {
+      highlightNodes.add(e.target);
+      highlightEdges.add(e.id);
+    });
   }
 
   // 绘制边
@@ -137,8 +127,8 @@ function drawTree(
       const y2 = target.y + target.height / 2;
       const cx = x1 + (x2 - x1) * 0.5;
 
-      const isHighlighted = selectedId && highlightNodes.has(n.id) && highlightNodes.has(target.id);
-      const alpha = selectedId ? (isHighlighted ? 1 : 0.15) : 0.55;
+      const isHighlighted = selectedId && highlightEdges.has(edge.id);
+      const alpha = selectedId ? (isHighlighted ? 1 : 0.12) : 0.55;
       const lineWidth = isHighlighted ? (edge.strength === 'critical' ? 3 : edge.strength === 'strong' ? 2.5 : 2) : 1.2;
 
       ctx.beginPath();
