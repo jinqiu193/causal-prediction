@@ -20,7 +20,7 @@ import SensitivityView from '@/components/sensitivity-view';
 import HistoricalCasesView from '@/components/historical-cases-view';
 import SettingsDialog, { type ApiConfig } from '@/components/settings-dialog';
 import KnowledgePanel from '@/components/knowledge-panel';
-import type { CausalGraph, PredictionResult, StreamEvent, CausalNode, SensitivityAnalysis, HistoricalCase } from '@/lib/types';
+import type { CausalGraph, CausalEdge, PredictionResult, StreamEvent, CausalNode, SensitivityAnalysis, HistoricalCase } from '@/lib/types';
 import { 
   Send,
   Loader2,
@@ -66,6 +66,10 @@ export default function Home() {
   // 新增状态：历史案例
   const [historicalCases, setHistoricalCases] = useState<HistoricalCase[]>([]);
   const [isLoadingHistorical, setIsLoadingHistorical] = useState(false);
+
+  // 节点扩展状态
+  const [isExpanding, setIsExpanding] = useState(false);
+  const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
 
   // 设置弹窗
   const [showSettings, setShowSettings] = useState(false);
@@ -233,6 +237,51 @@ export default function Home() {
   const handleNodeClick = (node: CausalNode) => {
     setEditingNode(node);
     setShowEditDialog(true);
+  };
+
+  const handleNodeExpand = async (node: CausalNode) => {
+    if (!causalGraph || !question) return;
+    setIsExpanding(true);
+    setExpandingNodeId(node.id);
+
+    try {
+      const response = await fetch('/api/graph/expand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          node,
+          question,
+          existingNodeIds: causalGraph.nodes.map(n => n.id),
+          apiConfig
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json() as {
+          expandedNodes?: CausalNode[];
+          expandedEdges?: CausalEdge[];
+          reasoning?: string;
+        };
+
+        if (data.expandedNodes && data.expandedNodes.length > 0) {
+          const updatedGraph: CausalGraph = {
+            ...causalGraph,
+            nodes: [...causalGraph.nodes, ...data.expandedNodes],
+            edges: [...(causalGraph.edges || []), ...(data.expandedEdges || [])],
+          };
+          setCausalGraph(updatedGraph);
+          // 重新计算敏感性分析
+          fetchSensitivityAnalysis(updatedGraph);
+          // 切换到因果图视图
+          setActiveTab('graph');
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsExpanding(false);
+      setExpandingNodeId(null);
+    }
   };
 
   const handleNodeSave = (updatedNode: CausalNode) => {
@@ -680,6 +729,8 @@ export default function Home() {
         onClose={() => setShowEditDialog(false)}
         onSave={handleNodeSave}
         onDelete={handleNodeDelete}
+        onExpand={handleNodeExpand}
+        isExpanding={isExpanding && expandingNodeId === editingNode?.id}
       />
 
       {/* 设置弹窗 */}

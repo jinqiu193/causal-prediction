@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { CausalNode, NodeType } from '@/lib/types';
-import { Trash2, Save, RotateCcw } from 'lucide-react';
+import { Trash2, Save, RotateCcw, GitBranch, Loader2 } from 'lucide-react';
 
 interface NodeEditDialogProps {
   node: CausalNode | null;
@@ -27,6 +27,8 @@ interface NodeEditDialogProps {
   onClose: () => void;
   onSave: (node: CausalNode) => void;
   onDelete?: (nodeId: string) => void;
+  onExpand?: (node: CausalNode) => void; // 以此节点扩展
+  isExpanding?: boolean;
 }
 
 const NODE_TYPES: { value: NodeType; label: string }[] = [
@@ -43,6 +45,8 @@ export default function NodeEditDialog({
   onClose,
   onSave,
   onDelete,
+  onExpand,
+  isExpanding,
 }: NodeEditDialogProps) {
   const [editedNode, setEditedNode] = useState<CausalNode | null>(null);
   const [probability, setProbability] = useState(50);
@@ -183,6 +187,32 @@ export default function NodeEditDialog({
               保存
             </Button>
           </div>
+
+          {/* 扩展按钮 */}
+          {onExpand && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                onSave({ ...editedNode, probability, isUserModified: true });
+                onExpand(editedNode);
+                onClose();
+              }}
+              disabled={isExpanding}
+              className="w-full bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20"
+            >
+              {isExpanding ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  正在扩展推理链...
+                </>
+              ) : (
+                <>
+                  <GitBranch className="h-4 w-4 mr-2" />
+                  以此节点为假设继续扩展推理
+                </>
+              )}
+            </Button>
+          )}
 
           {/* 删除按钮 */}
           {onDelete && (

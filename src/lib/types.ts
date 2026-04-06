@@ -15,6 +15,8 @@ export interface CausalNode {
   probability?: number;
   // 用户编辑标记
   isUserModified?: boolean;
+  // 扩展推理说明
+  reasoning?: string;
 }
 
 // 因果关系强度
