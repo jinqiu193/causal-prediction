@@ -3,7 +3,7 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import type { CausalGraph, CausalNode, CausalEdge } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
-import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const NODE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
@@ -40,26 +40,74 @@ interface DrawNode {
 
 function layoutTree(nodes: CausalNode[], edges: CausalEdge[]): DrawNode[] {
   if (nodes.length === 0) return [];
-  const layerMap = new Map<number, CausalNode[]>();
-  nodes.forEach(n => {
-    const l = n.layer || 1;
-    if (!layerMap.has(l)) layerMap.set(l, []);
-    layerMap.get(l)!.push(n);
+
+  // 构建父子关系
+  const childrenOf = new Map<string, CausalNode[]>();
+  const hasParent = new Set<string>();
+  nodes.forEach(n => childrenOf.set(n.id, []));
+  edges.forEach(e => {
+    if (e.target !== e.source) {
+      const list = childrenOf.get(e.source);
+      if (list) { list.push(nodes.find(n => n.id === e.target)!); hasParent.add(e.target); }
+    }
   });
-  const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => a - b);
-  const result: DrawNode[] = [];
+
+  // 根节点：无入边的节点；若无则以 layer 最小的为根
+  let roots = nodes.filter(n => !hasParent.has(n.id));
+  if (roots.length === 0) {
+    const minLayer = Math.min(...nodes.map(n => n.layer || 1));
+    roots = nodes.filter(n => (n.layer || 1) === minLayer);
+  }
+
+  // BFS 计算每个节点的 subtreeHeight（含自身）
+  const subtreeHeight = new Map<string, number>();
+  const stack: string[] = roots.map(r => r.id);
+  const order: string[] = [];
+  while (stack.length) {
+    const id = stack.pop()!;
+    order.unshift(id);
+    const kids = childrenOf.get(id) || [];
+    kids.forEach(c => { if (c) stack.push(c.id); });
+  }
+  order.forEach(id => {
+    const kids = (childrenOf.get(id) || []).filter(Boolean);
+    const childHeights = kids.map(c => subtreeHeight.get(c.id) || 0);
+    subtreeHeight.set(id, Math.max(1, ...childHeights));
+  });
+
+  // 横向树布局：DFS 分配坐标
+  const H_GAP = LAYER_GAP; // 层级水平间距
   const V_GAP = 22;
+  const PADDING_X = 60;
   const PADDING_Y = 50;
 
-  sortedLayers.forEach((layer, li) => {
-    const layerNodes = layerMap.get(layer)!;
-    layerNodes.forEach((node, ni) => {
-      const x = 60 + li * LAYER_GAP;
-      const y = PADDING_Y + ni * (NODE_H + V_GAP);
-      result.push({ id: node.id, label: node.label, type: node.type || 'event', probability: node.probability, layer: li, x, y, node });
+  const pos = new Map<string, { x: number; y: number }>();
+
+  function place(nodeId: string, x: number, yCenter: number, subtreeH: number) {
+    pos.set(nodeId, { x, y: yCenter - (subtreeH - 1) * (NODE_H + V_GAP) / 2 });
+    const kids = (childrenOf.get(nodeId) || []).filter(Boolean);
+    if (kids.length === 0) return;
+    let curY = yCenter - ((kids.length - 1) * (NODE_H + V_GAP)) / 2;
+    kids.forEach(child => {
+      const childH = subtreeHeight.get(child.id) || 1;
+      place(child.id, x + H_GAP, curY, childH);
+      curY += childH * (NODE_H + V_GAP);
     });
+  }
+
+  // 多根节点竖排
+  let totalHeight = 0;
+  roots.forEach((root, ri) => {
+    const h = (subtreeHeight.get(root.id) || 1) * (NODE_H + V_GAP);
+    if (ri > 0) totalHeight += V_GAP;
+    place(root.id, PADDING_X + ri * H_GAP, PADDING_Y + totalHeight + h / 2, subtreeHeight.get(root.id) || 1);
+    totalHeight += h;
   });
-  return result;
+
+  return nodes.map(n => {
+    const p = pos.get(n.id) || { x: PADDING_X, y: PADDING_Y };
+    return { id: n.id, label: n.label, type: n.type || 'event', probability: n.probability, layer: 0, x: p.x, y: p.y, node: n };
+  });
 }
 
 function drawFrame(
@@ -96,7 +144,7 @@ function drawFrame(
     const tx = overrides.get(tgt.id)?.x ?? tgt.x;
     const ty = (overrides.get(tgt.id)?.y ?? tgt.y) + NODE_H / 2;
     const cx = sx + (tx - sx) * 0.5;
-    const isH = selNeighbors.has(edge.id);
+    const isH = edgeSet.has(edge.id);
     const alpha = selId ? (isH ? 1 : 0.1) : 0.5;
     const lw = isH ? 2.5 : 1.2;
 
@@ -201,6 +249,7 @@ export default function CausalTreeView({ graph, onNodeClick }: { graph: CausalGr
   const [selId, setSelId] = useState<string | null>(null);
   const [hovId, setHovId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const nodes = useMemo(() => layoutTree(graph.nodes, graph.edges || []), [graph.nodes, graph.edges]);
 
@@ -263,6 +312,25 @@ export default function CausalTreeView({ graph, onNodeClick }: { graph: CausalGr
 
   // pan/zoom 变化时同步 ref 并重绘
   useEffect(() => { panRef.current = panRef.current; redraw(); }, [size]); // pan via redraw
+
+  // ESC 退出全屏
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsFullscreen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isFullscreen]);
+
+  // 全屏切换时更新画布尺寸
+  useEffect(() => {
+    if (!wrapRef.current) return;
+    const ro = new ResizeObserver(() => {
+      const rect = wrapRef.current!.getBoundingClientRect();
+      setSize({ w: rect.width, h: rect.height });
+    });
+    ro.observe(wrapRef.current);
+    return () => ro.disconnect();
+  }, [isFullscreen]);
   useEffect(() => { zoomRef.current = zoom; redraw(); }, [zoom, size]);
 
   // 坐标转换
@@ -381,6 +449,7 @@ export default function CausalTreeView({ graph, onNodeClick }: { graph: CausalGr
           <span className="text-xs text-slate-500 w-12 text-center">{Math.round(zoomRef.current * 100)}%</span>
           <Button variant="ghost" size="sm" onClick={() => { const z = Math.max(0.3, zoomRef.current * 0.8); zoomRef.current = z; setZoom(z); }} className="h-7 w-7 p-0 text-slate-400"><ZoomOut className="h-4 w-4"/></Button>
           <Button variant="ghost" size="sm" onClick={() => { panRef.current = { x: 20, y: 20 }; zoomRef.current = 1; setZoom(1); redraw(); }} className="h-7 w-7 p-0 text-slate-400"><RotateCcw className="h-4 w-4"/></Button>
+          <Button variant="ghost" size="sm" onClick={() => { setIsFullscreen(v => !v); }} className="h-7 w-7 p-0 text-slate-400">{isFullscreen ? <Minimize2 className="h-4 w-4"/> : <Maximize2 className="h-4 w-4"/>}</Button>
         </div>
       </div>
 
@@ -396,7 +465,16 @@ export default function CausalTreeView({ graph, onNodeClick }: { graph: CausalGr
       </div>
 
       {/* 画布 */}
-      <div ref={wrapRef} className="relative w-full rounded-xl border border-slate-700/40 bg-slate-950 overflow-hidden" style={{ height: 520 }}>
+      <div
+        ref={wrapRef}
+        className="relative w-full rounded-xl border border-slate-700/40 bg-slate-950 overflow-hidden"
+        style={{
+          height: isFullscreen ? '100vh' : 520,
+          position: isFullscreen ? 'fixed' : 'relative',
+          inset: isFullscreen ? 0 : 'auto',
+          zIndex: isFullscreen ? 9999 : 'auto',
+        }}
+      >
         <canvas
           ref={canvasRef}
           className="cursor-crosshair"

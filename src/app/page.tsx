@@ -16,14 +16,13 @@ import {
 import CausalGraphView from '@/components/causal-graph';
 import PredictionResultView from '@/components/prediction-result';
 import NodeEditDialog from '@/components/node-edit-dialog';
-import SensitivityView from '@/components/sensitivity-view';
 import HistoricalCasesView from '@/components/historical-cases-view';
 import SettingsDialog, { type ApiConfig } from '@/components/settings-dialog';
 import KnowledgePanel from '@/components/knowledge-panel';
 import StakeholderView from '@/components/stakeholder-view';
 import CausalTreeView from '@/components/causal-tree-view';
 import type { StakeholderAnalysis } from '@/lib/types';
-import type { CausalGraph, CausalEdge, PredictionResult, StreamEvent, CausalNode, SensitivityAnalysis, HistoricalCase } from '@/lib/types';
+import type { CausalGraph, CausalEdge, PredictionResult, StreamEvent, CausalNode, HistoricalCase } from '@/lib/types';
 import { 
   Send,
   Loader2,
@@ -34,7 +33,6 @@ import {
   Settings,
   GitBranch,
   TrendingUp,
-  Activity,
   History,
   BookOpen,
   Users
@@ -63,10 +61,6 @@ export default function Home() {
   const [editingNode, setEditingNode] = useState<CausalNode | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   
-  // 新增状态：敏感性分析
-  const [sensitivityAnalysis, setSensitivityAnalysis] = useState<SensitivityAnalysis | null>(null);
-  const [isLoadingSensitivity, setIsLoadingSensitivity] = useState(false);
-
   // 新增状态：利益分析
   const [stakeholderAnalysis, setStakeholderAnalysis] = useState<StakeholderAnalysis | null>(null);
   const [isLoadingStakeholder, setIsLoadingStakeholder] = useState(false);
@@ -86,7 +80,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
 
   // 当前激活的菜单项
-  const [activeTab, setActiveTab] = useState<'graph' | 'prediction' | 'sensitivity' | 'stakeholder' | 'history' | 'knowledge'>('graph');
+  const [activeTab, setActiveTab] = useState<'graph' | 'prediction' | 'stakeholder' | 'history' | 'knowledge'>('graph');
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
     try {
       const stored = localStorage.getItem('causal-predict-config');
@@ -109,29 +103,6 @@ export default function Home() {
       resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [causalGraph, prediction]);
-
-  // 获取敏感性分析
-  const fetchSensitivityAnalysis = useCallback(async (graph: CausalGraph) => {
-    if (!graph || graph.nodes.length === 0) return;
-    
-    setIsLoadingSensitivity(true);
-    try {
-      const response = await fetch('/api/sensitivity', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ graph })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setSensitivityAnalysis(data);
-      }
-    } catch {
-      // 忽略错误
-    } finally {
-      setIsLoadingSensitivity(false);
-    }
-  }, []);
 
   // 获取历史案例
   const fetchHistoricalCases = useCallback(async (q: string, keywords: string[]) => {
@@ -186,7 +157,6 @@ export default function Home() {
     setProgress(null);
     setCausalGraph(null);
     setPrediction(null);
-    setSensitivityAnalysis(null);
     setStakeholderAnalysis(null);
     setHistoricalCases([]);
 
@@ -234,8 +204,6 @@ export default function Home() {
                 case 'graph':
                   const graph = event.data as CausalGraph;
                   setCausalGraph(graph);
-                  // 自动获取敏感性分析
-                  fetchSensitivityAnalysis(graph);
                   // 自动获取利益分析
                   fetchStakeholderAnalysis(graph, question);
                   // 自动获取历史案例
@@ -263,7 +231,7 @@ export default function Home() {
       setIsLoading(false);
       setProgress(null);
     }
-  }, [question, customLogic, depth, error, fetchSensitivityAnalysis, fetchHistoricalCases]);
+  }, [question, customLogic, depth, error, fetchHistoricalCases]);
 
   const handleCancel = () => {
     abortControllerRef.current?.abort();
@@ -320,11 +288,6 @@ export default function Home() {
         };
         setCausalGraph(updatedGraph);
         setActiveTab('graph');
-        try {
-          fetchSensitivityAnalysis(updatedGraph);
-        } catch {
-          // 敏感性分析失败不阻塞
-        }
       } else {
         console.log('[Expand] 未返回扩展节点，LLM解析可能失败或因果链已充分');
       }
@@ -346,9 +309,6 @@ export default function Home() {
       )
     };
     setCausalGraph(updatedGraph);
-    
-    // 重新计算敏感性分析
-    fetchSensitivityAnalysis(updatedGraph);
   };
 
   const handleNodeDelete = (nodeId: string) => {
@@ -360,9 +320,6 @@ export default function Home() {
       edges: causalGraph.edges.filter(e => e.source !== nodeId && e.target !== nodeId)
     };
     setCausalGraph(updatedGraph);
-    
-    // 重新计算敏感性分析
-    fetchSensitivityAnalysis(updatedGraph);
   };
 
   const handleExampleClick = (example: string) => {
@@ -523,18 +480,6 @@ export default function Home() {
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('sensitivity')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-                    activeTab === 'sensitivity'
-                      ? 'bg-amber-500/20 text-amber-400'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <Activity className="h-4 w-4" />
-                  敏感性分析
-                </button>
-
-                <button
                   onClick={() => setActiveTab('stakeholder')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
                     activeTab === 'stakeholder'
@@ -615,34 +560,6 @@ export default function Home() {
                     <Card className="bg-slate-800/50 border-slate-700/50">
                       <CardContent className="p-8 text-center text-slate-500">
                         暂无预测结论
-                      </CardContent>
-                    </Card>
-                  )}
-                </div>
-              )}
-
-              {/* 敏感性分析 */}
-              {activeTab === 'sensitivity' && (
-                <div>
-                  {isLoadingSensitivity ? (
-                    <Card className="bg-slate-800/50 border-slate-700/50">
-                      <CardContent className="p-8 flex items-center justify-center gap-3 text-slate-400">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        <span>正在分析关键因素...</span>
-                      </CardContent>
-                    </Card>
-                  ) : sensitivityAnalysis ? (
-                    <SensitivityView
-                      analysis={sensitivityAnalysis}
-                      onNodeClick={(nodeId) => {
-                        const node = causalGraph?.nodes.find(n => n.id === nodeId);
-                        if (node) handleNodeClick(node);
-                      }}
-                    />
-                  ) : (
-                    <Card className="bg-slate-800/50 border-slate-700/50">
-                      <CardContent className="p-8 text-center text-slate-500">
-                        暂无敏感性分析数据
                       </CardContent>
                     </Card>
                   )}
