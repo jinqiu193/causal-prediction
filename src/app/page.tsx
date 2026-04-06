@@ -239,10 +239,15 @@ export default function Home() {
     setShowEditDialog(true);
   };
 
-  const handleNodeExpand = async (node: CausalNode) => {
+  const handleNodeExpand = async (nodeId: string) => {
     if (!causalGraph || !question) return;
+
+    // 从图中查找已保存的节点，不用对话框临时状态
+    const node = causalGraph.nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
     setIsExpanding(true);
-    setExpandingNodeId(node.id);
+    setExpandingNodeId(nodeId);
 
     try {
       const response = await fetch('/api/graph/expand', {
@@ -262,8 +267,6 @@ export default function Home() {
         reasoning?: string;
         error?: string;
       };
-
-      console.log('[Expand] API response:', JSON.stringify(data, null, 2));
 
       if (data.error) {
         console.error('扩展失败:', data.error);
@@ -285,6 +288,8 @@ export default function Home() {
         } catch {
           // 敏感性分析失败不阻塞
         }
+      } else {
+        console.log('[Expand] 未返回扩展节点，LLM解析可能失败或因果链已充分');
       }
     } catch (err) {
       console.error('节点扩展失败:', err);

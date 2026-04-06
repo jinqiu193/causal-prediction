@@ -27,7 +27,7 @@ interface NodeEditDialogProps {
   onClose: () => void;
   onSave: (node: CausalNode) => void;
   onDelete?: (nodeId: string) => void;
-  onExpand?: (node: CausalNode) => void; // 以此节点扩展
+  onExpand?: (nodeId: string) => void; // 以此节点扩展，传递节点ID
   isExpanding?: boolean;
 }
 
@@ -193,7 +193,7 @@ export default function NodeEditDialog({
             <Button
               variant="outline"
               onClick={() => {
-                onExpand(editedNode);
+                onExpand(editedNode.id);
               }}
               disabled={isExpanding}
               className="w-full bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20"

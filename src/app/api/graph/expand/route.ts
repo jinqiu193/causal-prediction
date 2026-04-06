@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
     ];
 
     const response = await callMinimax(apiUrl, apiKey, model, messages, 0.3);
+    console.log('[Graph Expand] LLM raw response (first 500 chars):', response.slice(0, 500));
     const parsed = safeParseJson(response) as {
       expandedNodes?: Array<{ id: string; label: string; description?: string; type?: string; keywords?: string[]; layer?: number; probability?: number }>;
       expandedEdges?: Array<{ id: string; source: string; target: string; label?: string; strength?: string; type?: string }>;
