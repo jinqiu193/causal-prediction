@@ -148,6 +148,15 @@ export async function POST(request: NextRequest) {
       type: e.type || 'causes',
     }));
 
+    // 如果解析失败或没有扩展节点，返回友好提示
+    if (!parsed || !parsed.expandedNodes || parsed.expandedNodes.length === 0) {
+      return NextResponse.json({
+        expandedNodes: renamedNodes.length > 0 ? renamedNodes : [],
+        expandedEdges: renamedEdges.length > 0 ? renamedEdges : [],
+        reasoning: parsed?.reasoning || '已尽可能扩展因果链'
+      });
+    }
+
     return NextResponse.json({
       expandedNodes: renamedNodes,
       expandedEdges: renamedEdges,

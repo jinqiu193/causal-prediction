@@ -193,9 +193,7 @@ export default function NodeEditDialog({
             <Button
               variant="outline"
               onClick={() => {
-                onSave({ ...editedNode, probability, isUserModified: true });
                 onExpand(editedNode);
-                onClose();
               }}
               disabled={isExpanding}
               className="w-full bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20"

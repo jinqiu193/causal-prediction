@@ -256,28 +256,38 @@ export default function Home() {
         })
       });
 
-      if (response.ok) {
-        const data = await response.json() as {
-          expandedNodes?: CausalNode[];
-          expandedEdges?: CausalEdge[];
-          reasoning?: string;
-        };
+      const data = await response.json() as {
+        expandedNodes?: CausalNode[];
+        expandedEdges?: CausalEdge[];
+        reasoning?: string;
+        error?: string;
+      };
 
-        if (data.expandedNodes && data.expandedNodes.length > 0) {
-          const updatedGraph: CausalGraph = {
-            ...causalGraph,
-            nodes: [...causalGraph.nodes, ...data.expandedNodes],
-            edges: [...(causalGraph.edges || []), ...(data.expandedEdges || [])],
-          };
-          setCausalGraph(updatedGraph);
-          // 重新计算敏感性分析
+      console.log('[Expand] API response:', JSON.stringify(data, null, 2));
+
+      if (data.error) {
+        console.error('扩展失败:', data.error);
+        setIsExpanding(false);
+        setExpandingNodeId(null);
+        return;
+      }
+
+      if (data.expandedNodes && data.expandedNodes.length > 0) {
+        const updatedGraph: CausalGraph = {
+          ...causalGraph,
+          nodes: [...causalGraph.nodes, ...data.expandedNodes],
+          edges: [...(causalGraph.edges || []), ...(data.expandedEdges || [])],
+        };
+        setCausalGraph(updatedGraph);
+        setActiveTab('graph');
+        try {
           fetchSensitivityAnalysis(updatedGraph);
-          // 切换到因果图视图
-          setActiveTab('graph');
+        } catch {
+          // 敏感性分析失败不阻塞
         }
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('节点扩展失败:', err);
     } finally {
       setIsExpanding(false);
       setExpandingNodeId(null);
