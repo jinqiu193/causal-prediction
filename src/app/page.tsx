@@ -80,7 +80,7 @@ export default function Home() {
   const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
 
   // 图谱视图模式：graph=节点图，tree=思维导图
-  const [graphViewMode, setGraphViewMode] = useState<'graph' | 'tree'>('graph');
+  const [graphViewMode, setGraphViewMode] = useState<'graph' | 'tree'>('tree');
 
   // 设置弹窗
   const [showSettings, setShowSettings] = useState(false);
@@ -585,16 +585,6 @@ export default function Home() {
                           <div className="flex items-center gap-3">
                             <div className="flex items-center bg-slate-700/50 rounded-lg p-0.5">
                               <button
-                                onClick={() => setGraphViewMode('graph')}
-                                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                                  graphViewMode === 'graph'
-                                    ? 'bg-cyan-500/20 text-cyan-400'
-                                    : 'text-slate-400 hover:text-white'
-                                }`}
-                              >
-                                节点图
-                              </button>
-                              <button
                                 onClick={() => setGraphViewMode('tree')}
                                 className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
                                   graphViewMode === 'tree'
@@ -603,6 +593,16 @@ export default function Home() {
                                 }`}
                               >
                                 推理链
+                              </button>
+                              <button
+                                onClick={() => setGraphViewMode('graph')}
+                                className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                                  graphViewMode === 'graph'
+                                    ? 'bg-cyan-500/20 text-cyan-400'
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                节点图
                               </button>
                             </div>
                             <div className="flex items-center gap-3 text-xs text-slate-400">
