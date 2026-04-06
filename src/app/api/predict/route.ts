@@ -208,10 +208,33 @@ export async function POST(request: NextRequest) {
       };
 
       try {
+        // 第零步：RAG 检索知识库
+        sendEvent({ type: 'reasoning', data: '📚 正在检索知识库...' });
+        let knowledgeContext = '';
+        try {
+          const kbResponse = await fetch(new URL('/api/knowledge/retrieve', request.url).toString(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question, topK: 5 })
+          });
+          if (kbResponse.ok) {
+            const kbData = await kbResponse.json() as { prompt?: string; count?: number };
+            if (kbData.prompt) {
+              knowledgeContext = kbData.prompt;
+              sendEvent({ type: 'reasoning', data: `✅ 知识库检索完成 (${kbData.count}条相关原则)` });
+            }
+          }
+        } catch {
+          sendEvent({ type: 'reasoning', data: '⚠️ 知识库未配置或检索失败，继续分析...' });
+        }
+
         // 第一步：构建因果图
         sendEvent({ type: 'reasoning', data: '📊 正在分析问题，构建因果关系图...' });
 
         let fullPrompt = buildGraphPrompt;
+        if (knowledgeContext) {
+          fullPrompt += `\n\n${knowledgeContext}`;
+        }
         if (customLogic) {
           fullPrompt += `\n\n用户参考逻辑：${customLogic}`;
         }

@@ -77,6 +77,19 @@ export interface SensitivityAnalysis {
   analysis: string;
 }
 
+// ========== 新增：知识库 ==========
+
+export interface KnowledgeItem {
+  id: string;
+  title: string;
+  content: string;          // 知识内容/原则
+  category: string;          // 分类：政治/经济/科技/社会等
+  priority: number;          // 优先级 1-10，数值越大优先级越高
+  tags: string[];            // 标签，用于检索
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ========== 新增：历史案例 ==========
 
 export interface HistoricalCase {

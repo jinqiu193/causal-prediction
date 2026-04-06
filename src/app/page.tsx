@@ -19,6 +19,7 @@ import NodeEditDialog from '@/components/node-edit-dialog';
 import SensitivityView from '@/components/sensitivity-view';
 import HistoricalCasesView from '@/components/historical-cases-view';
 import SettingsDialog, { type ApiConfig } from '@/components/settings-dialog';
+import KnowledgePanel from '@/components/knowledge-panel';
 import type { CausalGraph, PredictionResult, StreamEvent, CausalNode, SensitivityAnalysis, HistoricalCase } from '@/lib/types';
 import { 
   Send,
@@ -31,7 +32,8 @@ import {
   GitBranch,
   TrendingUp,
   Activity,
-  History
+  History,
+  BookOpen
 } from 'lucide-react';
 
 const EXAMPLE_QUESTIONS = [
@@ -69,7 +71,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
 
   // 当前激活的菜单项
-  const [activeTab, setActiveTab] = useState<'graph' | 'prediction' | 'sensitivity' | 'history'>('graph');
+  const [activeTab, setActiveTab] = useState<'graph' | 'prediction' | 'sensitivity' | 'history' | 'knowledge'>('graph');
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
     try {
       const stored = localStorage.getItem('causal-predict-config');
@@ -323,15 +325,16 @@ export default function Home() {
               <Lightbulb className="h-4 w-4 text-amber-400" />
               <span className="text-sm text-slate-300">提出预测问题，AI构建因果模型，你可交互编辑</span>
             </div>
-            
+
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               探索未来的<span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400">可能性</span>
             </h2>
-            <p className="text-slate-400 max-w-2xl mx-auto mb-10">
+            <p className="text-slate-400 max-w-2xl mx-auto mb-6">
               深度因果建模 + 敏感性分析 + 历史案例参考
             </p>
 
-            <div className="grid gap-3 md:grid-cols-2 max-w-3xl mx-auto">
+            {/* 快捷入口 */}
+            <div className="grid gap-3 md:grid-cols-2 max-w-3xl mx-auto mb-8">
               {EXAMPLE_QUESTIONS.map((example, index) => (
                 <button
                   key={index}
@@ -348,6 +351,33 @@ export default function Home() {
                   </div>
                 </button>
               ))}
+            </div>
+
+            {/* 知识库快捷入口 */}
+            <div className="max-w-3xl mx-auto">
+              <Card className="bg-slate-800/30 border-slate-700/50">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-500/20 rounded-lg">
+                        <BookOpen className="h-5 w-5 text-orange-400" />
+                      </div>
+                      <div className="text-left">
+                        <h3 className="font-semibold text-white">知识库</h3>
+                        <p className="text-xs text-slate-400">维护高确定性原则，构建因果图时自动检索</p>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={() => setActiveTab('knowledge')}
+                      className="bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border-0"
+                      size="sm"
+                    >
+                      管理知识库
+                    </Button>
+                  </div>
+                  <KnowledgePanel />
+                </CardContent>
+              </Card>
             </div>
           </div>
         )}
@@ -413,6 +443,18 @@ export default function Home() {
                 >
                   <History className="h-4 w-4" />
                   历史案例
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('knowledge')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                    activeTab === 'knowledge'
+                      ? 'bg-orange-500/20 text-orange-400'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <BookOpen className="h-4 w-4" />
+                  知识库
                 </button>
               </nav>
             </div>
@@ -507,6 +549,17 @@ export default function Home() {
                   ) : (
                     <HistoricalCasesView cases={historicalCases} />
                   )}
+                </div>
+              )}
+
+              {/* 知识库 */}
+              {activeTab === 'knowledge' && (
+                <div>
+                  <Card className="bg-slate-800/50 border-slate-700/50">
+                    <CardContent className="p-6">
+                      <KnowledgePanel />
+                    </CardContent>
+                  </Card>
                 </div>
               )}
             </div>
