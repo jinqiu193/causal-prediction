@@ -49,87 +49,34 @@ function layoutTree(
 ): DrawNode[] {
   if (nodes.length === 0) return [];
 
-  // 构建邻接表
-  const children = new Map<string, string[]>();
-  const parents = new Map<string, string[]>();
-  nodes.forEach(n => { children.set(n.id, []); parents.set(n.id, []); });
-  edges.forEach(e => {
-    children.get(e.source)?.push(e.target);
-    parents.get(e.target)?.push(e.source);
+  // 按 layer 分组（layer 由 LLM 生成，代表因果推理深度）
+  const layerMap = new Map<number, CausalNode[]>();
+  nodes.forEach(n => {
+    const l = n.layer || 1;
+    if (!layerMap.has(l)) layerMap.set(l, []);
+    layerMap.get(l)!.push(n);
   });
+  const sortedLayers = Array.from(layerMap.keys()).sort((a, b) => a - b);
 
-  // 找根节点（无父节点）
-  const roots = nodes.filter(n => (parents.get(n.id) || []).length === 0);
-  if (roots.length === 0) {
-    const minLayer = Math.min(...nodes.map(n => n.layer || 1));
-    roots.push(...nodes.filter(n => (n.layer || 1) === minLayer));
-  }
-
-  // 递归计算每个节点的子树大小
-  function subtreeSize(nodeId: string, visited: Set<string>): number {
-    if (visited.has(nodeId)) return 0;
-    visited.add(nodeId);
-    const kids = children.get(nodeId) || [];
-    return 1 + kids.reduce((s, c) => s + subtreeSize(c, visited), 0);
-  }
-
-  // 对根节点按 subtreeSize 排序，让大子树靠上
-  const sortedRoots = [...roots].sort((a, b) =>
-    subtreeSize(b.id, new Set()) - subtreeSize(a.id, new Set())
-  );
-
-  // DFS 分配层级和位置
   const result: DrawNode[] = [];
-  let currentY = 0;
+  const PADDING_X = 60;
+  const PADDING_Y = 40;
 
-  function assign(nodeId: string, layer: number, siblingCount: number, siblingIndex: number) {
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return;
+  sortedLayers.forEach(layer => {
+    const layerNodes = layerMap.get(layer)!;
+    const totalH = layerNodes.length * (NODE_H + V_GAP) - V_GAP;
+    const startY = PADDING_Y;
 
-    const kids = children.get(nodeId) || [];
-    const totalSubtreeH = kids.reduce((acc, c) => {
-      return acc + (NODE_H + V_GAP) * subtreeSize(c, new Set());
-    }, 0) - V_GAP;
-
-    const startY = currentY - totalSubtreeH / 2;
-    currentY = startY;
-
-    const x = layer * LAYER_GAP + 40;
-    const y = startY;
-
-    result.push({
-      id: node.id, label: node.label, type: node.type || 'event',
-      probability: node.probability, layer, x, y,
-      width: NODE_W, height: NODE_H, node,
-      childCount: kids.length,
+    layerNodes.forEach((node, ni) => {
+      const x = PADDING_X + layer * LAYER_GAP;
+      const y = startY + ni * (NODE_H + V_GAP);
+      result.push({
+        id: node.id, label: node.label, type: node.type || 'event',
+        probability: node.probability, layer, x, y,
+        width: NODE_W, height: NODE_H, node,
+        childCount: (edges || []).filter(e => e.source === node.id).length,
+      });
     });
-
-    const nodeResult = result[result.length - 1];
-
-    // 当前 Y 重置为该节点底部
-    currentY = y + NODE_H + V_GAP;
-
-    // 分配子节点
-    kids.forEach((childId, i) => {
-      const childSubH = (NODE_H + V_GAP) * subtreeSize(childId, new Set());
-      const offset = (NODE_H + V_GAP) * i;
-      const saveY = currentY;
-      currentY = y + offset;
-      assign(childId, layer + 1, kids.length, i);
-      currentY = saveY + childSubH;
-    });
-
-    // 恢复 currentY 到此节点底部
-    currentY = y + NODE_H + V_GAP;
-  }
-
-  sortedRoots.forEach((root, i) => {
-    if (i > 0) {
-      // 换根时换行
-      const lastNode = result[result.length - 1];
-      currentY = lastNode ? lastNode.y + NODE_H + V_GAP * 3 : 0;
-    }
-    assign(root.id, 0, sortedRoots.length, i);
   });
 
   return result;
@@ -150,32 +97,31 @@ function drawTree(
 
   if (nodes.length === 0) return;
 
-  // 计算高亮集合
+  // 计算高亮集合（迭代版，防止栈溢出）
   const highlightNodes = new Set<string>();
   if (selectedId) {
     highlightNodes.add(selectedId);
-    // 前向链（所有祖先）
-    function addAncestors(id: string, visited: Set<string>) {
-      if (visited.has(id)) return;
+    const visited = new Set<string>();
+
+    // 用栈模拟DFS，避免递归栈溢出
+    const stack = [selectedId];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      if (visited.has(id)) continue;
       visited.add(id);
-      const pars = edges.filter(e => e.target === id).map(e => e.source);
-      pars.forEach(p => {
-        highlightNodes.add(p);
-        addAncestors(p, visited);
+
+      // 前向：找所有指向此节点的边（祖先）
+      edges.filter(e => e.target === id && !visited.has(e.source)).forEach(e => {
+        highlightNodes.add(e.source);
+        stack.push(e.source);
+      });
+
+      // 后向：找所有从此节点指出的边（后代）
+      edges.filter(e => e.source === id && !visited.has(e.target)).forEach(e => {
+        highlightNodes.add(e.target);
+        stack.push(e.target);
       });
     }
-    addAncestors(selectedId, new Set());
-    // 后向链（所有后代）
-    function addDescendants(id: string, visited: Set<string>) {
-      if (visited.has(id)) return;
-      visited.add(id);
-      const chs = edges.filter(e => e.source === id).map(e => e.target);
-      chs.forEach(c => {
-        highlightNodes.add(c);
-        addDescendants(c, visited);
-      });
-    }
-    addDescendants(selectedId, new Set());
   }
 
   // 绘制边
